@@ -7,6 +7,7 @@
 //
 
 #import "AxeMode.h"
+#import <Carbon/Carbon.h> // For <HIToolbox/Events.h>
 
 @interface IDEActivityLogSection : NSObject
 @property(readonly) unsigned long long totalNumberOfErrors;
@@ -16,8 +17,21 @@
 - (id)enumerateSubsectionsRecursivelyUsingPreorderBlock:(id)arg1;
 @end
 
+//@interface IDEWorkspace : IDEXMLPackageContainer
+@interface IDEWorkspace : NSObject
+@end
+
+@interface IDEWorkspaceArena : NSObject
+@property(readonly) IDEWorkspace *workspace;
+@end
+
 @interface IDEExecutionEnvironment : NSObject
 @property(readonly) IDEActivityLogSection *latestBuildLog;
+@property(readonly) IDEWorkspaceArena *workspaceArena;
+@end
+
+@interface IDEWorkspaceDocument : NSDocument
+@property(readonly) IDEWorkspace *workspace;
 @end
 
 static AxeMode *sharedPlugin;
@@ -53,7 +67,7 @@ static AxeMode *sharedPlugin;
     }
     return self;
 }
-        
+
 static NSArray *
 FindFailureLogSections(IDEActivityLogSection *section) {
   NSMutableArray *sections = [NSMutableArray new];
@@ -74,30 +88,99 @@ FindFailureLogSections(IDEActivityLogSection *section) {
   IDEExecutionEnvironment *environment = (IDEExecutionEnvironment *)notification.object;
   IDEActivityLogSection *log = environment.latestBuildLog;
   NSArray *failures = FindFailureLogSections(log);
-  
-  for (IDEActivityLogSection *failure in failures) {
-    static NSRegularExpression *regex = nil;
-    if (regex == nil) {
-      NSError *error = NULL;
-      regex = [NSRegularExpression regularExpressionWithPattern:@"has been modified since the precompiled header '(.+?\\.pch)'"
-                                                        options:0
-                                                          error:&error];
+
+  if (failures.count > 0) {
+    BOOL shouldRebuild = YES;
+
+    for (IDEActivityLogSection *failure in failures) {
+      static NSRegularExpression *regex = nil;
+      if (regex == nil) {
+        NSError *error = NULL;
+        regex = [NSRegularExpression regularExpressionWithPattern:@"has been modified since the precompiled header '(.+?\\.pch)'"
+                                                          options:0
+                                                            error:&error];
+        if (error) {
+          // fail
+          NSLog(@"%@", error);
+          return;
+        }
+      }
+
+      NSString *text = failure.text;
+      NSTextCheckingResult *match = [regex firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+      if (match) {
+        shouldRebuild &= YES;
+        NSString *pch = [text substringWithRange:[match rangeAtIndex:1]];
+        NSLog(@"DELETE: %@", pch);
+  //      if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
+  //        NSLog(@"Failed :(");
+  //      }
+      } else {
+        // There are other types of failures, so the user will have to resolve those.
+        shouldRebuild = NO;
+      }
     }
-    
-    NSString *text = failure.text;
-    NSTextCheckingResult *match = [regex firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
-    if (match) {
-      shouldRebuild &= YES;
-      NSString *pch = [text substringWithRange:[match rangeAtIndex:1]];
-      NSLog(@"DELETE: %@", pch);
-//      if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
-//        NSLog(@"Failed :(");
-//      }
+
+    if (shouldRebuild) {
+      IDEWorkspace *currentWorkspace = environment.workspaceArena.workspace;
+
+      // TODO Use -[IDEDocumentController workspaceDocumentForWorkspace:]
+      IDEWorkspaceDocument *currentDocument = nil;
+      NSDocumentController *documentController = [NSDocumentController sharedDocumentController];
+      for (IDEWorkspaceDocument *document in documentController.documents) {
+        if ([document isKindOfClass:NSClassFromString(@"IDEWorkspaceDocument")]) {
+          if (document.workspace == currentWorkspace) {
+            currentDocument = document;
+            break;
+          }
+        }
+      }
+
+      if (currentDocument) {
+        NSWindowController *windowController = [currentDocument.windowControllers firstObject];
+        NSWindow *window = windowController.window;
+        if (window) {
+          [self simulateKeyCommand:@"b" keyCode:kVK_ANSI_B inWindow:window];
+        } else {
+          // fail
+          NSLog(@"No window(controller) found");
+          return;
+        }
+      } else {
+        // fail
+        NSLog(@"No document found");
+        return;
+      }
     }
   }
 }
 
-- (void)dealloc
+- (void)simulateKeyCommand:(NSString *)character keyCode:(unsigned short)keyCode inWindow:(NSWindow *)window;
+{
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    [self postKeyEventWithType:NSKeyDown character:character keyCode:keyCode inWindow:window];
+    [self postKeyEventWithType:NSKeyUp character:character keyCode:keyCode inWindow:window];
+  });
+}
+
+- (void)postKeyEventWithType:(NSEventType)eventType character:(NSString *)character keyCode:(unsigned short)keyCode inWindow:(NSWindow *)window;
+{
+  NSEvent *event = [NSEvent keyEventWithType:eventType
+                                    location:NSZeroPoint
+                               modifierFlags:NSCommandKeyMask
+                                   timestamp:[NSDate timeIntervalSinceReferenceDate]
+                                windowNumber:window.windowNumber
+                                     context:[NSGraphicsContext currentContext]
+                                  characters:character
+                 charactersIgnoringModifiers:character
+                                   isARepeat:NO
+                                     keyCode:keyCode];
+  NSLog(@"%@", event);
+  [window sendEvent:event];
+  // [NSApp postEvent:event atStart:YES];
+}
+
+- (void)dealloc;
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
