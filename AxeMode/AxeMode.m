@@ -8,16 +8,47 @@
 
 #import "AxeMode.h"
 
+@interface DVTDocumentLocation : NSObject
+@property(readonly) NSURL *documentURL;
+@end
+
 @interface IDEActivityLogSection : NSObject
 @property(readonly) unsigned long long totalNumberOfErrors;
 @property(readonly) NSArray *subsections;
 @property(readonly) NSString *text;
+@property(readonly) DVTDocumentLocation *location;
 // TODO use this instead?
 - (id)enumerateSubsectionsRecursivelyUsingPreorderBlock:(id)arg1;
 @end
 
+@interface IDEScheme : NSObject
+@property(readonly) NSString *name;
+@end
+
+@interface IDERunDestination : NSObject
+@end
+
+@interface IDERunContextManager : NSObject
+@property(retain, nonatomic) IDEScheme *activeRunContext;
+@property(retain, nonatomic) IDERunDestination *activeRunDestination;
+@end
+
+//@interface IDEWorkspace : IDEXMLPackageContainer
+@interface IDEWorkspace : NSObject
+@property(readonly) IDERunContextManager *runContextManager;
+@end
+
+@interface IDEWorkspaceArena : NSObject
+@property(readonly) IDEWorkspace *workspace;
+@end
+
 @interface IDEExecutionEnvironment : NSObject
 @property(readonly) IDEActivityLogSection *latestBuildLog;
+@property(readonly) IDEWorkspaceArena *workspaceArena;
+@end
+
+@interface IDESchemeCommand : NSObject
++ (instancetype)launchSchemeCommand;
 @end
 
 static AxeMode *sharedPlugin;
@@ -53,7 +84,7 @@ static AxeMode *sharedPlugin;
     }
     return self;
 }
-        
+
 static NSArray *
 FindFailureLogSections(IDEActivityLogSection *section) {
   NSMutableArray *sections = [NSMutableArray new];
@@ -61,7 +92,7 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     if (section.subsections) {
       for (IDEActivityLogSection *subsection in section.subsections) {
         [sections addObjectsFromArray:FindFailureLogSections(subsection)];
-        }
+      }
     } else {
       [sections addObject:section];
     }
@@ -74,6 +105,8 @@ FindFailureLogSections(IDEActivityLogSection *section) {
   IDEExecutionEnvironment *environment = (IDEExecutionEnvironment *)notification.object;
   IDEActivityLogSection *log = environment.latestBuildLog;
   NSArray *failures = FindFailureLogSections(log);
+  
+  BOOL shouldRebuild = failures.count > 0;
   
   for (IDEActivityLogSection *failure in failures) {
     static NSRegularExpression *regex = nil;
@@ -93,6 +126,18 @@ FindFailureLogSections(IDEActivityLogSection *section) {
 //      if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
 //        NSLog(@"Failed :(");
 //      }
+      
+    } else {
+      shouldRebuild = NO;
+    }
+    
+    if (shouldRebuild) {
+      IDERunContextManager *contextManager = environment.workspaceArena.workspace.runContextManager;
+      IDEScheme *scheme = contextManager.activeRunContext;
+      NSString *action = [NSString stringWithFormat:@"Build \"%@\"", scheme.name];
+      IDERunDestination *destination = contextManager.activeRunDestination;
+      IDESchemeCommand *command = [IDESchemeCommand launchSchemeCommand];
+      [command _performSchemeTask:0x2 onScheme:var_38 runDestination:r14 command:r12 commandName:r13 buildCommand:0x0 filePath:0x0 overridingTestingSpecifiers:0x0 invocationRecord:0x0 completionBlock:];
     }
   }
 }
