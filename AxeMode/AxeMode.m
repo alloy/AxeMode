@@ -147,6 +147,9 @@ FindFailureLogSections(IDEActivityLogSection *section) {
 
 #if 1
 
+// (lldb) p (SEL)[[[[[[NSApplication sharedApplication] mainMenu] itemWithTitle:@"Product"] submenu] itemWithTitle:@"Build"] action]
+// (SEL) $4 = "buildActiveRunContext:"
+//
 - (void)triggerRebuild:(IDEExecutionEnvironment *)environment;
 {
   IDEWorkspace *currentWorkspace = environment.workspaceArena.workspace;
