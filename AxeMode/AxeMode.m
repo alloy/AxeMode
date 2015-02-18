@@ -40,6 +40,7 @@
 
 // @interface IDEWorkspaceTabController : IDEViewController
 @interface IDEWorkspaceTabController : NSObject
+- (void)runActiveRunContext:(id)sender;
 - (void)buildActiveRunContext:(id)sender;
 @end
 
@@ -58,18 +59,18 @@ static AxeMode *sharedPlugin;
 
 + (void)pluginDidLoad:(NSBundle *)plugin
 {
-    static dispatch_once_t onceToken;
-    NSString *currentApplicationName = [[NSBundle mainBundle] infoDictionary][@"CFBundleName"];
-    if ([currentApplicationName isEqual:@"Xcode"]) {
-        dispatch_once(&onceToken, ^{
-            sharedPlugin = [[self alloc] initWithBundle:plugin];
-        });
-    }
+  static dispatch_once_t onceToken;
+  NSString *currentApplicationName = [[NSBundle mainBundle] infoDictionary][@"CFBundleName"];
+  if ([currentApplicationName isEqual:@"Xcode"]) {
+    dispatch_once(&onceToken, ^{
+      sharedPlugin = [[self alloc] initWithBundle:plugin];
+    });
+  }
 }
 
 + (instancetype)sharedPlugin
 {
-    return sharedPlugin;
+  return sharedPlugin;
 }
 
 - (void)dealloc;
@@ -81,13 +82,13 @@ static AxeMode *sharedPlugin;
 - (id)initWithBundle:(NSBundle *)plugin
 {
   if ((self = [super init])) {
-        self.bundle = plugin;
+    self.bundle = plugin;
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(didFinishBuild:)
                                                  name:@"ExecutionEnvironmentLastUserInitiatedBuildCompletedNotification"
                                                object:nil];
-    }
-    return self;
+  }
+  return self;
 }
 
 static NSArray *
@@ -203,8 +204,12 @@ FindFailureLogSections(IDEActivityLogSection *section) {
 
 #if 1
 
+// (lldb) p (SEL)[[[[[[NSApplication sharedApplication] mainMenu] itemWithTitle:@"Product"] submenu] itemWithTitle:@"Run"] action]
+// (SEL) $0 = "runActiveRunContext:"
 // (lldb) p (SEL)[[[[[[NSApplication sharedApplication] mainMenu] itemWithTitle:@"Product"] submenu] itemWithTitle:@"Build"] action]
 // (SEL) $4 = "buildActiveRunContext:"
+//
+// etc
 //
 - (BOOL)triggerRebuild:(IDEExecutionEnvironment *)environment;
 {
@@ -215,7 +220,7 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     IDEWorkspaceWindowController *windowController = [currentDocument.windowControllers firstObject];
     IDEWorkspaceTabController *workspaceTabController = windowController.activeWorkspaceTabController;
     if (workspaceTabController) {
-      [workspaceTabController buildActiveRunContext:nil];
+      [workspaceTabController runActiveRunContext:nil];
       return YES;
     } else {
       // fail
