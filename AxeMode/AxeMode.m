@@ -34,6 +34,19 @@
 @property(readonly) IDEWorkspace *workspace;
 @end
 
+@interface IDEDocumentController : NSDocumentController
++ (IDEWorkspaceDocument *)workspaceDocumentForWorkspace:(IDEWorkspace *)workspace;
+@end
+
+// @interface IDEWorkspaceTabController : IDEViewController
+@interface IDEWorkspaceTabController : NSObject
+- (void)buildActiveRunContext:(id)sender;
+@end
+
+@interface IDEWorkspaceWindowController : NSWindowController
+@property(readonly) IDEWorkspaceTabController *activeWorkspaceTabController;
+@end
+
 static AxeMode *sharedPlugin;
 
 @interface AxeMode()
@@ -57,6 +70,11 @@ static AxeMode *sharedPlugin;
 + (instancetype)sharedPlugin
 {
     return sharedPlugin;
+}
+
+- (void)dealloc;
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (id)initWithBundle:(NSBundle *)plugin
@@ -122,36 +140,56 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     }
 
     if (shouldRebuild) {
-      IDEWorkspace *currentWorkspace = environment.workspaceArena.workspace;
-
-      // TODO Use -[IDEDocumentController workspaceDocumentForWorkspace:]
-      IDEWorkspaceDocument *currentDocument = nil;
-      NSDocumentController *documentController = [NSDocumentController sharedDocumentController];
-      for (IDEWorkspaceDocument *document in documentController.documents) {
-        if ([document isKindOfClass:NSClassFromString(@"IDEWorkspaceDocument")]) {
-          if (document.workspace == currentWorkspace) {
-            currentDocument = document;
-            break;
-          }
-        }
-      }
-
-      if (currentDocument) {
-        NSWindowController *windowController = [currentDocument.windowControllers firstObject];
-        NSWindow *window = windowController.window;
-        if (window) {
-          [self simulateKeyCommand:@"b" keyCode:kVK_ANSI_B inWindow:window];
-        } else {
-          // fail
-          NSLog(@"No window(controller) found");
-          return;
-        }
-      } else {
-        // fail
-        NSLog(@"No document found");
-        return;
-      }
+      [self triggerRebuild:environment];
     }
+  }
+}
+
+#if 1
+
+- (void)triggerRebuild:(IDEExecutionEnvironment *)environment;
+{
+  IDEWorkspace *currentWorkspace = environment.workspaceArena.workspace;
+  IDEWorkspaceDocument *currentDocument = [NSClassFromString(@"IDEDocumentController") workspaceDocumentForWorkspace:currentWorkspace];
+
+  if (currentDocument) {
+    IDEWorkspaceWindowController *windowController = [currentDocument.windowControllers firstObject];
+    IDEWorkspaceTabController *workspaceTabController = windowController.activeWorkspaceTabController;
+    if (workspaceTabController) {
+      [workspaceTabController buildActiveRunContext:nil];
+    } else {
+      // fail
+      NSLog(@"No workspaceTabController found");
+      return;
+    }
+  } else {
+    // fail
+    NSLog(@"No document found");
+    return;
+  }
+}
+
+#else
+
+- (void)triggerRebuild:(IDEExecutionEnvironment *)environment;
+{
+  IDEWorkspace *currentWorkspace = environment.workspaceArena.workspace;
+  IDEWorkspaceDocument *currentDocument = [IDEDocumentController workspaceDocumentForWorkspace:currentWorkspace];
+
+  if (currentDocument) {
+    NSWindowController *windowController = [currentDocument.windowControllers firstObject];
+    NSWindow *window = windowController.window;
+    if (window) {
+      [self simulateKeyCommand:@"b" keyCode:kVK_ANSI_B inWindow:window];
+    } else {
+      // fail
+      NSLog(@"No window(controller) found");
+      return;
+    }
+  } else {
+    // fail
+    NSLog(@"No document found");
+    return;
   }
 }
 
@@ -179,10 +217,6 @@ FindFailureLogSections(IDEActivityLogSection *section) {
   [window sendEvent:event];
   // [NSApp postEvent:event atStart:YES];
 }
-
-- (void)dealloc;
-{
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
+#endif
 
 @end
