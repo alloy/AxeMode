@@ -80,9 +80,12 @@ static AxeMode *sharedPlugin;
 
 - (id)initWithBundle:(NSBundle *)plugin
 {
-    if (self = [super init]) {
+  if ((self = [super init])) {
         self.bundle = plugin;
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didFinishBuild:) name:@"ExecutionEnvironmentLastUserInitiatedBuildCompletedNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(didFinishBuild:)
+                                                 name:@"ExecutionEnvironmentLastUserInitiatedBuildCompletedNotification"
+                                               object:nil];
     }
     return self;
 }
