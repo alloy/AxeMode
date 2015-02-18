@@ -49,9 +49,9 @@
 
 static AxeMode *sharedPlugin;
 
-@interface AxeMode()
-
+@interface AxeMode () <NSUserNotificationCenterDelegate>
 @property (nonatomic, strong, readwrite) NSBundle *bundle;
+@property (nonatomic, strong, readwrite) id <NSUserNotificationCenterDelegate>userNotificationCenterDelegate;
 @end
 
 @implementation AxeMode
@@ -74,7 +74,8 @@ static AxeMode *sharedPlugin;
 
 - (void)dealloc;
 {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [NSUserNotificationCenter defaultUserNotificationCenter].delegate = self.userNotificationCenterDelegate;
 }
 
 - (id)initWithBundle:(NSBundle *)plugin
@@ -133,6 +134,7 @@ FindFailureLogSections(IDEActivityLogSection *section) {
   //      if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
   //        NSLog(@"Failed :(");
   //      }
+        [self postPCHRemovedNotification:pch];
       } else {
         // There are other types of failures, so the user will have to resolve those.
         shouldRebuild = NO;
@@ -140,8 +142,59 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     }
 
     if (shouldRebuild) {
-      [self triggerRebuild:environment];
+      if (![self triggerRebuild:environment]) {
+        // fail
+        return;
+      }
     }
+  }
+}
+
+- (void)postPCHRemovedNotification:(NSString *)pch;
+{
+  // TODO Assign AxeMode icon https://github.com/alloy/terminal-notifier/blob/3c0d7312c1e54cbdc309988c5f42c35b33807bb5/Terminal%20Notifier/AppDelegate.m#L260-L264
+  NSUserNotification *notification = [NSUserNotification new];
+  notification.title = @"AxeMode enabled";
+  notification.subtitle = @"Remove precompiled header";
+  notification.informativeText = [pch lastPathComponent];
+  notification.userInfo = @{ @"AxeModeNotification":@(YES) };
+
+  NSUserNotificationCenter *notificationCenter = [NSUserNotificationCenter defaultUserNotificationCenter];
+  // Hijack NSUserNotificationCenter delegate.
+  // Xcode lazily assigns its own delegate, so always re-check.
+  if (notificationCenter.delegate != self) {
+    self.userNotificationCenterDelegate = notificationCenter.delegate;
+    notificationCenter.delegate = self;
+  }
+  [notificationCenter scheduleNotification:notification];
+}
+
+- (BOOL)userNotificationCenter:(NSUserNotificationCenter *)center shouldPresentNotification:(NSUserNotification *)notification;
+{
+  if ([notification.userInfo[@"AxeModeNotification"] boolValue]) {
+    // Always show our notification, even when Xcode is the active application, otherwise the user
+    // might not understand why a rebuild is triggered.
+    return YES;
+  } else {
+    if ([self.userNotificationCenterDelegate respondsToSelector:@selector(userNotificationCenter:shouldPresentNotification:)]) {
+      return [self.userNotificationCenterDelegate userNotificationCenter:center shouldPresentNotification:notification];
+    }
+  }
+  // I guess defaulting to show is better than not?
+  return YES;
+}
+
+- (void)userNotificationCenter:(NSUserNotificationCenter *)center didDeliverNotification:(NSUserNotification *)notification;
+{
+  if ([self.userNotificationCenterDelegate respondsToSelector:@selector(userNotificationCenter:didDeliverNotification:)]) {
+    [self.userNotificationCenterDelegate userNotificationCenter:center didDeliverNotification:notification];
+  }
+}
+
+- (void)userNotificationCenter:(NSUserNotificationCenter *)center didActivateNotification:(NSUserNotification *)notification;
+{
+  if ([self.userNotificationCenterDelegate respondsToSelector:@selector(userNotificationCenter:didActivateNotification:)]) {
+    [self.userNotificationCenterDelegate userNotificationCenter:center didActivateNotification:notification];
   }
 }
 
@@ -150,7 +203,7 @@ FindFailureLogSections(IDEActivityLogSection *section) {
 // (lldb) p (SEL)[[[[[[NSApplication sharedApplication] mainMenu] itemWithTitle:@"Product"] submenu] itemWithTitle:@"Build"] action]
 // (SEL) $4 = "buildActiveRunContext:"
 //
-- (void)triggerRebuild:(IDEExecutionEnvironment *)environment;
+- (BOOL)triggerRebuild:(IDEExecutionEnvironment *)environment;
 {
   IDEWorkspace *currentWorkspace = environment.workspaceArena.workspace;
   IDEWorkspaceDocument *currentDocument = [NSClassFromString(@"IDEDocumentController") workspaceDocumentForWorkspace:currentWorkspace];
@@ -160,16 +213,16 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     IDEWorkspaceTabController *workspaceTabController = windowController.activeWorkspaceTabController;
     if (workspaceTabController) {
       [workspaceTabController buildActiveRunContext:nil];
+      return YES;
     } else {
       // fail
       NSLog(@"No workspaceTabController found");
-      return;
     }
   } else {
     // fail
     NSLog(@"No document found");
-    return;
   }
+  return NO;
 }
 
 #else
