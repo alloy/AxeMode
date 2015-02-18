@@ -134,10 +134,12 @@ FindFailureLogSections(IDEActivityLogSection *section) {
       if (match) {
         shouldRebuild &= YES;
         NSString *pch = [text substringWithRange:[match rangeAtIndex:1]];
-        NSLog(@"DELETE: %@", pch);
-  //      if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
-  //        NSLog(@"Failed :(");
-  //      }
+        NSError *error = nil;
+        if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
+          // fail
+          NSLog(@"Failed to remove PCH: %@", error);
+          return;
+        }
         [self postPCHRemovedNotification:pch];
       } else {
         // There are other types of failures, so the user will have to resolve those.
