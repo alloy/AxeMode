@@ -8,6 +8,18 @@
 
 #import "AxeMode.h"
 
+@interface IDEActivityLogSection : NSObject
+@property(readonly) unsigned long long totalNumberOfErrors;
+@property(readonly) NSArray *subsections;
+@property(readonly) NSString *text;
+// TODO use this instead?
+- (id)enumerateSubsectionsRecursivelyUsingPreorderBlock:(id)arg1;
+@end
+
+@interface IDEExecutionEnvironment : NSObject
+@property(readonly) IDEActivityLogSection *latestBuildLog;
+@end
+
 static AxeMode *sharedPlugin;
 
 @interface AxeMode()
@@ -36,29 +48,53 @@ static AxeMode *sharedPlugin;
 - (id)initWithBundle:(NSBundle *)plugin
 {
     if (self = [super init]) {
-        // reference to plugin's bundle, for resource access
         self.bundle = plugin;
-        
-        // Create menu items, initialize UI, etc.
-
-        // Sample Menu Item:
-        NSMenuItem *menuItem = [[NSApp mainMenu] itemWithTitle:@"Edit"];
-        if (menuItem) {
-            [[menuItem submenu] addItem:[NSMenuItem separatorItem]];
-            NSMenuItem *actionMenuItem = [[NSMenuItem alloc] initWithTitle:@"Do Action" action:@selector(doMenuAction) keyEquivalent:@""];
-            [actionMenuItem setTarget:self];
-            [[menuItem submenu] addItem:actionMenuItem];
-        }
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didFinishBuild:) name:@"ExecutionEnvironmentLastUserInitiatedBuildCompletedNotification" object:nil];
     }
     return self;
 }
+        
+static NSArray *
+FindFailureLogSections(IDEActivityLogSection *section) {
+  NSMutableArray *sections = [NSMutableArray new];
+  if (section.totalNumberOfErrors > 0) {
+    if (section.subsections) {
+      for (IDEActivityLogSection *subsection in section.subsections) {
+        [sections addObjectsFromArray:FindFailureLogSections(subsection)];
+        }
+    } else {
+      [sections addObject:section];
+    }
+  }
+  return sections;
+}
 
-// Sample Action, for menu item:
-- (void)doMenuAction
+- (void)didFinishBuild:(NSNotification *)notification
 {
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Hello, World"];
-    [alert runModal];
+  IDEExecutionEnvironment *environment = (IDEExecutionEnvironment *)notification.object;
+  IDEActivityLogSection *log = environment.latestBuildLog;
+  NSArray *failures = FindFailureLogSections(log);
+  
+  for (IDEActivityLogSection *failure in failures) {
+    static NSRegularExpression *regex = nil;
+    if (regex == nil) {
+      NSError *error = NULL;
+      regex = [NSRegularExpression regularExpressionWithPattern:@"has been modified since the precompiled header '(.+?\\.pch)'"
+                                                        options:0
+                                                          error:&error];
+    }
+    
+    NSString *text = failure.text;
+    NSTextCheckingResult *match = [regex firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
+    if (match) {
+      shouldRebuild &= YES;
+      NSString *pch = [text substringWithRange:[match rangeAtIndex:1]];
+      NSLog(@"DELETE: %@", pch);
+//      if (![[NSFileManager defaultManager] removeItemAtPath:pch error:&error]) {
+//        NSLog(@"Failed :(");
+//      }
+    }
+  }
 }
 
 - (void)dealloc
