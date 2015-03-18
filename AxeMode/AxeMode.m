@@ -21,6 +21,22 @@
 @interface IDEWorkspace : NSObject
 @end
 
+
+@interface IDESchemeCommand : NSObject
+@property(readonly, nonatomic) NSString *commandNameGerund;
+@property(readonly, nonatomic) NSString *commandName;
+@end
+
+@interface IDEBuildParameters : NSObject
+@property(readonly) IDESchemeCommand *schemeCommand;
+@end
+
+
+@interface IDEBuildOperation : NSObject
+@property(readonly) IDEBuildParameters *buildParameters;
+@property(readonly) int purpose;
+@end
+
 @interface IDEWorkspaceArena : NSObject
 @property(readonly) IDEWorkspace *workspace;
 @end
@@ -41,7 +57,13 @@
 // @interface IDEWorkspaceTabController : IDEViewController
 @interface IDEWorkspaceTabController : NSObject
 - (void)runActiveRunContext:(id)sender;
-- (void)buildActiveRunContext:(id)sender;
+- (void)testActiveRunContext:(id)sender;
+- (void)analyzeActiveRunContext:(id)sender;
+- (void)buildAndArchiveActiveRunContext:(id)sender;
+
+// this is the oddity, couldn't find a matching method like above
+- (void)buildForProfileActiveRunContext:(id)sender;
+
 @end
 
 @interface IDEWorkspaceWindowController : NSWindowController
@@ -50,8 +72,17 @@
 
 static AxeMode *sharedPlugin;
 
+NS_ENUM(NSInteger, AXELastBuildType){
+    AXELastBuildTypeRun,
+    AXELastBuildTypeTest,
+    AXELastBuildTypeProfile,
+    AXELastBuildTypeAnalyze,
+    AXELastBuildTypeArchive
+};
+
 @interface AxeMode () <NSUserNotificationCenterDelegate>
 @property (nonatomic, strong, readwrite) NSBundle *bundle;
+@property (nonatomic, assign, readwrite) enum AXELastBuildType lastBuildType;
 @property (nonatomic, strong, readwrite) id <NSUserNotificationCenterDelegate>userNotificationCenterDelegate;
 @end
 
@@ -84,6 +115,11 @@ static AxeMode *sharedPlugin;
   if ((self = [super init])) {
     self.bundle = plugin;
     [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(buildStarted:)
+                                                 name:@"IDEBuildOperationWillStartNotification"
+                                               object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(didFinishBuild:)
                                                  name:@"ExecutionEnvironmentLastUserInitiatedBuildCompletedNotification"
                                                object:nil];
@@ -104,6 +140,29 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     }
   }
   return sections;
+}
+
+
+- (void)buildStarted:(NSNotification *)notification
+{
+  IDEBuildOperation *operation = (IDEBuildOperation *)notification.object;
+  NSString *typeOfOperation = [[[operation buildParameters] schemeCommand] commandName];
+
+  if ([typeOfOperation isEqualToString:@"Test"]) {
+    self.lastBuildType = AXELastBuildTypeTest;
+  }
+  else if ([typeOfOperation isEqualToString:@"Archive"]) {
+    self.lastBuildType = AXELastBuildTypeArchive;
+  }
+  else if ([typeOfOperation isEqualToString:@"Profile"]) {
+    self.lastBuildType = AXELastBuildTypeProfile;
+  }
+  else if ([typeOfOperation isEqualToString:@"Analyze"]) {
+    self.lastBuildType = AXELastBuildTypeProfile;
+
+  } else {
+    self.lastBuildType = AXELastBuildTypeRun;
+  }
 }
 
 - (void)didFinishBuild:(NSNotification *)notification
@@ -222,7 +281,7 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     IDEWorkspaceWindowController *windowController = [currentDocument.windowControllers firstObject];
     IDEWorkspaceTabController *workspaceTabController = windowController.activeWorkspaceTabController;
     if (workspaceTabController) {
-      [workspaceTabController runActiveRunContext:nil];
+        [self reRunOnWorkspaceTabController:workspaceTabController];
       return YES;
     } else {
       // fail
@@ -233,6 +292,31 @@ FindFailureLogSections(IDEActivityLogSection *section) {
     NSLog(@"No document found");
   }
   return NO;
+}
+
+- (void)reRunOnWorkspaceTabController:(IDEWorkspaceTabController *)workspaceTabController
+{
+  switch (self.lastBuildType) {
+    case AXELastBuildTypeProfile:
+      [workspaceTabController buildForProfileActiveRunContext:nil];
+      break;
+
+    case AXELastBuildTypeArchive:
+      [workspaceTabController buildAndArchiveActiveRunContext:nil];
+      break;
+
+    case AXELastBuildTypeTest:
+      [workspaceTabController testActiveRunContext:nil];
+      break;
+
+    case AXELastBuildTypeAnalyze:
+      [workspaceTabController analyzeActiveRunContext:nil];
+      break;
+
+    default:
+      [workspaceTabController runActiveRunContext:nil];
+      break;
+  }
 }
 
 #else
