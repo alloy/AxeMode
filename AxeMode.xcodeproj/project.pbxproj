@@ -20,7 +20,7 @@
 		51CE12381A938A260047B5ED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		51CE12391A938A260047B5ED /* AxeMode.xcscheme */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = AxeMode.xcscheme; path = AxeMode.xcodeproj/xcshareddata/xcschemes/AxeMode.xcscheme; sourceTree = SOURCE_ROOT; };
 		51CE123B1A938A260047B5ED /* AxeMode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AxeMode.h; sourceTree = "<group>"; };
-		51CE123C1A938A260047B5ED /* AxeMode.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AxeMode.m; sourceTree = "<group>"; };
+		51CE123C1A938A260047B5ED /* AxeMode.m */ = {isa = PBXFileReference; indentWidth = 2; lastKnownFileType = sourcecode.c.objc; path = AxeMode.m; sourceTree = "<group>"; tabWidth = 2; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -271,6 +271,7 @@
 				51CE12421A938A260047B5ED /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
